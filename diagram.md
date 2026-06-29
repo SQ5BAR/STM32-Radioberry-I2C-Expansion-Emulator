@@ -1,77 +1,77 @@
 ```mermaid
+%%{init: {"flowchart": {"curve": "linear"}}}%%
 flowchart TB
 
-    classDef rpi stroke:#60a5fa,fill:#eff6ff;
-    classDef blackpill stroke:#9ca3af,fill:#f9fafb;
-    classDef mcp stroke:#4ade80,fill:#f0fdf4;
-    classDef max stroke:#fb923c,fill:#fff7ed;
-    classDef pot stroke:#f87171,fill:#fef2f2;
-    classDef sda stroke:#2563eb,fill:#dbeafe,color:#1e3a8a;
-    classDef scl stroke:#16a34a,fill:#dcfce7,color:#14532d;
-    classDef bus stroke:#111827,fill:#ffffff;
+    classDef rpi stroke:#60a5fa,fill:#eff6ff,color:#000;
+    classDef bp stroke:#9ca3af,fill:#f9fafb,color:#000;
+    classDef mcp stroke:#4ade80,fill:#f0fdf4,color:#000;
+    classDef max stroke:#fb923c,fill:#fff7ed,color:#000;
+    classDef pot stroke:#f87171,fill:#fef2f2,color:#000;
+    classDef sda stroke:#2563eb,fill:#dbeafe,color:#000;
+    classDef scl stroke:#16a34a,fill:#dcfce7,color:#000;
+    classDef dot stroke:transparent,fill:transparent,color:#000;
 
     %% =====================================================
     %% RADIOBERRY / RASPBERRY PI
     %% =====================================================
 
     subgraph RB["RadioBerry / Raspberry Pi"]
-    direction TB
+    direction LR
         RPI_SDA["Pin 3<br/>GPIO2 / SDA"]:::sda
         RPI_SCL["Pin 5<br/>GPIO3 / SCL"]:::scl
     end
 
     %% =====================================================
-    %% SIMPLE I2C BUS
+    %% I2C BUS SPLIT POINTS
     %% =====================================================
 
-    SDA_BUS["SDA bus"]:::sda
-    SCL_BUS["SCL bus"]:::scl
+    SDA_DOT["●"]:::dot
+    SCL_DOT["●"]:::dot
 
-    RPI_SDA --> SDA_BUS
-    RPI_SCL --> SCL_BUS
+    RPI_SDA --- SDA_DOT
+    RPI_SCL --- SCL_DOT
 
     %% =====================================================
-    %% BLACKPILL
+    %% STM32F411 BLACKPILL
     %% =====================================================
 
     subgraph BP["STM32F411 Blackpill"]
-    direction TB
+    direction LR
 
         subgraph MCP["MCP23008 emulator<br/>I²C address 0x20"]
         direction TB
-            MCP_IN["I²C input:<br/>PB7 = SDA<br/>PB6 = SCL"]:::mcp
+            MCP_TEXT["GPIO expander emulator"]:::mcp
         end
 
         subgraph MAX["MAX11613 emulator<br/>I²C address 0x34"]
         direction TB
-            MAX_IN["I²C input:<br/>PB9 = SDA<br/>PB10 = SCL"]:::max
+            MAX_TEXT["ADC emulator"]:::max
         end
 
         subgraph POT["MCP4662 emulator<br/>I²C address 0x2C"]
         direction TB
-            POT_IN["I²C input:<br/>PB4 = SDA<br/>PA8 = SCL"]:::pot
+            POT_TEXT["Digital potentiometer emulator"]:::pot
         end
     end
 
     %% =====================================================
-    %% STRAIGHT I2C CONNECTIONS
+    %% I2C CONNECTIONS
     %% =====================================================
 
-    SDA_BUS -->|"PB7 / SDA"| MCP_IN
-    SCL_BUS -->|"PB6 / SCL"| MCP_IN
+    SDA_DOT ---|"PB7 / I2C1_SDA"| MCP
+    SDA_DOT ---|"PB9 / I2C2_SDA"| MAX
+    SDA_DOT ---|"PB4 / I2C3_SDA"| POT
 
-    SDA_BUS -->|"PB9 / SDA"| MAX_IN
-    SCL_BUS -->|"PB10 / SCL"| MAX_IN
-
-    SDA_BUS -->|"PB4 / SDA"| POT_IN
-    SCL_BUS -->|"PA8 / SCL"| POT_IN
+    SCL_DOT ---|"PB6 / I2C1_SCL"| MCP
+    SCL_DOT ---|"PB10 / I2C2_SCL"| MAX
+    SCL_DOT ---|"PA8 / I2C3_SCL"| POT
 
     %% =====================================================
     %% EMULATOR OUTPUTS
     %% =====================================================
 
-    subgraph OUT["External STM32 pins / emulator outputs"]
-    direction TB
+    subgraph OUT["External STM32 pins / emulator signals"]
+    direction LR
 
         MCP_OUT["MCP23008 GPIO outputs<br/>
         GP0 → PA4<br/>
@@ -94,9 +94,9 @@ flowchart TB
         Wiper B → PA10 / TIM1_CH3 PWM"]:::pot
     end
 
-    MCP_IN --> MCP_OUT
-    MAX_IN --> MAX_OUT
-    POT_IN --> POT_OUT
+    MCP --- MCP_OUT
+    MAX --- MAX_OUT
+    POT --- POT_OUT
 
     %% =====================================================
     %% LINE COLORS
@@ -106,10 +106,10 @@ flowchart TB
     linkStyle 1 stroke:#16a34a,stroke-width:3px;
 
     linkStyle 2 stroke:#2563eb,stroke-width:3px;
+    linkStyle 3 stroke:#2563eb,stroke-width:3px;
     linkStyle 4 stroke:#2563eb,stroke-width:3px;
-    linkStyle 6 stroke:#2563eb,stroke-width:3px;
 
-    linkStyle 3 stroke:#16a34a,stroke-width:3px;
     linkStyle 5 stroke:#16a34a,stroke-width:3px;
+    linkStyle 6 stroke:#16a34a,stroke-width:3px;
     linkStyle 7 stroke:#16a34a,stroke-width:3px;
 ```
