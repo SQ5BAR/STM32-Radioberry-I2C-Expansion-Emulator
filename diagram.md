@@ -1,5 +1,5 @@
 ```mermaid
-%%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
+%%{init: {"flowchart": {"defaultRenderer": "elk", "curve": "linear"}}}%%
 flowchart LR
 
     classDef purple stroke:#a78bfa,fill:#f5f3ff;
@@ -8,6 +8,7 @@ flowchart LR
     classDef red stroke:#f87171,fill:#fef2f2;
     classDef sda stroke:#2563eb,fill:#dbeafe,color:#1e3a8a;
     classDef scl stroke:#16a34a,fill:#dcfce7,color:#14532d;
+    classDef dot stroke:transparent,fill:transparent,color:#111827;
 
     %% Raspberry Pi
     subgraph R["Raspberry Pi"]
@@ -17,8 +18,8 @@ flowchart LR
     end
 
     %% Bus split points
-    SDA_DOT(("●")):::sda
-    SCL_DOT(("●")):::scl
+    SDA_DOT["●"]:::dot
+    SCL_DOT["●"]:::dot
 
     %% STM32F411 Blackpill
     subgraph B["STM32F411 Blackpill"]
@@ -27,9 +28,6 @@ flowchart LR
         %% MCP23008
         subgraph MCP["MCP23008 Emulator<br/>I²C Address 0x20"]
         direction TB
-            MCP_SDA["PB7<br/>I2C1_SDA"]:::green
-            MCP_SCL["PB6<br/>I2C1_SCL"]:::green
-
             GP0["GP0 → PA4"]:::green
             GP1["GP1 → PB12"]:::green
             GP2["GP2 → PB13"]:::green
@@ -43,9 +41,6 @@ flowchart LR
         %% MAX11613
         subgraph MAX["MAX11613 Emulator<br/>I²C Address 0x34"]
         direction TB
-            MAX_SDA["PB9<br/>I2C2_SDA"]:::orange
-            MAX_SCL["PB10<br/>I2C2_SCL"]:::orange
-
             CH0["CH0 → PA0<br/>ADC1_IN0"]:::orange
             CH1["CH1 → PA1<br/>ADC1_IN1"]:::orange
             CH2["CH2 → PA2<br/>ADC1_IN2"]:::orange
@@ -55,45 +50,42 @@ flowchart LR
         %% MCP4662
         subgraph POT["MCP4662 Emulator<br/>I²C Address 0x2C"]
         direction TB
-            POT_SDA["PB4<br/>I2C3_SDA"]:::red
-            POT_SCL["PA8<br/>I2C3_SCL"]:::red
-
             WA["Wiper A → PA9<br/>TIM1_CH2 PWM"]:::red
             WB["Wiper B → PA10<br/>TIM1_CH3 PWM"]:::red
         end
     end
 
     %% SDA bus
-    P3 --> SDA_DOT
-    SDA_DOT --> MCP_SDA
-    SDA_DOT --> MAX_SDA
-    SDA_DOT --> POT_SDA
+    P3 --- SDA_DOT
+    SDA_DOT ---|"PB7 / I2C1_SDA"| MCP
+    SDA_DOT ---|"PB9 / I2C2_SDA"| MAX
+    SDA_DOT ---|"PB4 / I2C3_SDA"| POT
 
     %% SCL bus
-    P5 --> SCL_DOT
-    SCL_DOT --> MCP_SCL
-    SCL_DOT --> MAX_SCL
-    SCL_DOT --> POT_SCL
+    P5 --- SCL_DOT
+    SCL_DOT ---|"PB6 / I2C1_SCL"| MCP
+    SCL_DOT ---|"PB10 / I2C2_SCL"| MAX
+    SCL_DOT ---|"PA8 / I2C3_SCL"| POT
 
     %% MCP23008 outputs
-    GP0 --> GP0_OUT["PA4"]
-    GP1 --> GP1_OUT["PB12"]
-    GP2 --> GP2_OUT["PB13"]
-    GP3 --> GP3_OUT["PB14"]
-    GP4 --> GP4_OUT["PB15"]
-    GP5 --> GP5_OUT["PB3"]
-    GP6 --> GP6_OUT["PB5"]
-    GP7 --> GP7_OUT["PB8"]
+    GP0 --- GP0_OUT["PA4"]
+    GP1 --- GP1_OUT["PB12"]
+    GP2 --- GP2_OUT["PB13"]
+    GP3 --- GP3_OUT["PB14"]
+    GP4 --- GP4_OUT["PB15"]
+    GP5 --- GP5_OUT["PB3"]
+    GP6 --- GP6_OUT["PB5"]
+    GP7 --- GP7_OUT["PB8"]
 
     %% MAX11613 analog inputs
-    CH0 --> CH0_OUT["PA0"]
-    CH1 --> CH1_OUT["PA1"]
-    CH2 --> CH2_OUT["PA2"]
-    CH3 --> CH3_OUT["PA3"]
+    CH0 --- CH0_OUT["PA0"]
+    CH1 --- CH1_OUT["PA1"]
+    CH2 --- CH2_OUT["PA2"]
+    CH3 --- CH3_OUT["PA3"]
 
     %% MCP4662 PWM outputs
-    WA --> WA_OUT["PA9"]
-    WB --> WB_OUT["PA10"]
+    WA --- WA_OUT["PA9"]
+    WB --- WB_OUT["PA10"]
 
     %% SDA line color
     linkStyle 0 stroke:#2563eb,stroke-width:3px;
