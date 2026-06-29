@@ -11,7 +11,7 @@ flowchart TB
     classDef dot stroke:transparent,fill:transparent,color:#111827;
     classDef hidden stroke:transparent,fill:transparent,color:transparent;
 
-    %% Raspberry Pi block - top
+    %% Raspberry Pi block
     subgraph R["Raspberry Pi"]
     direction LR
         P3["Pin 3<br/>GPIO2 / SDA"]:::sda
@@ -22,37 +22,70 @@ flowchart TB
     SDA_DOT["●"]:::dot
     SCL_DOT["●"]:::dot
 
-    %% STM32F411 Blackpill block - bottom
+    %% STM32F411 Blackpill block
     subgraph B["STM32F411 Blackpill"]
-    direction LR
+    direction TB
 
-        %% MCP23008
-        subgraph MCP["MCP23008 Emulator<br/>I²C Address 0x20"]
-        direction TB
-            GP0["GP0 → PA4"]:::green
-            GP1["GP1 → PB12"]:::green
-            GP2["GP2 → PB13"]:::green
-            GP3["GP3 → PB14"]:::green
-            GP4["GP4 → PB15"]:::green
-            GP5["GP5 → PB3"]:::green
-            GP6["GP6 → PB5"]:::green
-            GP7["GP7 → PB8"]:::green
+        %% Emulator blocks row
+        subgraph EMU_ROW[" "]
+        direction LR
+
+            subgraph MCP["MCP23008 Emulator<br/>I²C Address 0x20"]
+            direction TB
+                GP0["GP0"]:::green
+                GP1["GP1"]:::green
+                GP2["GP2"]:::green
+                GP3["GP3"]:::green
+                GP4["GP4"]:::green
+                GP5["GP5"]:::green
+                GP6["GP6"]:::green
+                GP7["GP7"]:::green
+            end
+
+            subgraph MAX["MAX11613 Emulator<br/>I²C Address 0x34"]
+            direction TB
+                CH0["CH0"]:::orange
+                CH1["CH1"]:::orange
+                CH2["CH2"]:::orange
+                CH3["CH3"]:::orange
+            end
+
+            subgraph POT["MCP4662 Emulator<br/>I²C Address 0x2C"]
+            direction TB
+                WA["Wiper A"]:::red
+                WB["Wiper B"]:::red
+            end
         end
 
-        %% MAX11613
-        subgraph MAX["MAX11613 Emulator<br/>I²C Address 0x34"]
-        direction TB
-            CH0["CH0 → PA0<br/>ADC1_IN0"]:::orange
-            CH1["CH1 → PA1<br/>ADC1_IN1"]:::orange
-            CH2["CH2 → PA2<br/>ADC1_IN2"]:::orange
-            CH3["CH3 → PA3<br/>ADC1_IN3"]:::orange
-        end
+        %% Output pins row
+        subgraph OUT_ROW["External STM32 pins / signals"]
+        direction LR
 
-        %% MCP4662
-        subgraph POT["MCP4662 Emulator<br/>I²C Address 0x2C"]
-        direction TB
-            WA["Wiper A → PA9<br/>TIM1_CH2 PWM"]:::red
-            WB["Wiper B → PA10<br/>TIM1_CH3 PWM"]:::red
+            subgraph MCP_OUT["MCP23008 GPIO outputs"]
+            direction TB
+                GP0_OUT["PA4"]:::green
+                GP1_OUT["PB12"]:::green
+                GP2_OUT["PB13"]:::green
+                GP3_OUT["PB14"]:::green
+                GP4_OUT["PB15"]:::green
+                GP5_OUT["PB3"]:::green
+                GP6_OUT["PB5"]:::green
+                GP7_OUT["PB8"]:::green
+            end
+
+            subgraph MAX_OUT["MAX11613 ADC inputs"]
+            direction TB
+                CH0_OUT["PA0<br/>ADC1_IN0"]:::orange
+                CH1_OUT["PA1<br/>ADC1_IN1"]:::orange
+                CH2_OUT["PA2<br/>ADC1_IN2"]:::orange
+                CH3_OUT["PA3<br/>ADC1_IN3"]:::orange
+            end
+
+            subgraph POT_OUT["MCP4662 PWM outputs"]
+            direction TB
+                WA_OUT["PA9<br/>TIM1_CH2 PWM"]:::red
+                WB_OUT["PA10<br/>TIM1_CH3 PWM"]:::red
+            end
         end
     end
 
@@ -68,29 +101,31 @@ flowchart TB
     SCL_DOT ---|"PB10 / I2C2_SCL"| MAX
     SCL_DOT ---|"PA8 / I2C3_SCL"| POT
 
-    %% Force horizontal order of subblocks inside Blackpill
+    %% MCP23008 outputs below block
+    GP0 --- GP0_OUT
+    GP1 --- GP1_OUT
+    GP2 --- GP2_OUT
+    GP3 --- GP3_OUT
+    GP4 --- GP4_OUT
+    GP5 --- GP5_OUT
+    GP6 --- GP6_OUT
+    GP7 --- GP7_OUT
+
+    %% MAX11613 analog inputs below block
+    CH0 --- CH0_OUT
+    CH1 --- CH1_OUT
+    CH2 --- CH2_OUT
+    CH3 --- CH3_OUT
+
+    %% MCP4662 PWM outputs below block
+    WA --- WA_OUT
+    WB --- WB_OUT
+
+    %% Force horizontal order
     MCP ~~~ MAX
     MAX ~~~ POT
-
-    %% MCP23008 outputs
-    GP0 --- GP0_OUT["PA4"]
-    GP1 --- GP1_OUT["PB12"]
-    GP2 --- GP2_OUT["PB13"]
-    GP3 --- GP3_OUT["PB14"]
-    GP4 --- GP4_OUT["PB15"]
-    GP5 --- GP5_OUT["PB3"]
-    GP6 --- GP6_OUT["PB5"]
-    GP7 --- GP7_OUT["PB8"]
-
-    %% MAX11613 analog inputs
-    CH0 --- CH0_OUT["PA0"]
-    CH1 --- CH1_OUT["PA1"]
-    CH2 --- CH2_OUT["PA2"]
-    CH3 --- CH3_OUT["PA3"]
-
-    %% MCP4662 PWM outputs
-    WA --- WA_OUT["PA9"]
-    WB --- WB_OUT["PA10"]
+    MCP_OUT ~~~ MAX_OUT
+    MAX_OUT ~~~ POT_OUT
 
     %% SDA line color
     linkStyle 0 stroke:#2563eb,stroke-width:3px;
