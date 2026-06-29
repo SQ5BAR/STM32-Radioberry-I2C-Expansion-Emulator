@@ -23,7 +23,7 @@ flowchart LR
 
     %% STM32F411 Blackpill
     subgraph B["STM32F411 Blackpill"]
-    direction TB
+    direction LR
 
         %% MCP23008
         subgraph MCP["MCP23008 Emulator<br/>I²C Address 0x20"]
