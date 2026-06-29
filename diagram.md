@@ -1,6 +1,6 @@
 ```mermaid
 %%{init: {"flowchart": {"defaultRenderer": "elk", "curve": "linear"}}}%%
-flowchart LR
+flowchart TB
 
     classDef purple stroke:#a78bfa,fill:#f5f3ff;
     classDef green stroke:#4ade80,fill:#f0fdf4;
@@ -9,10 +9,11 @@ flowchart LR
     classDef sda stroke:#2563eb,fill:#dbeafe,color:#1e3a8a;
     classDef scl stroke:#16a34a,fill:#dcfce7,color:#14532d;
     classDef dot stroke:transparent,fill:transparent,color:#111827;
+    classDef hidden stroke:transparent,fill:transparent,color:transparent;
 
-    %% Raspberry Pi
+    %% Raspberry Pi block - top
     subgraph R["Raspberry Pi"]
-    direction TB
+    direction LR
         P3["Pin 3<br/>GPIO2 / SDA"]:::sda
         P5["Pin 5<br/>GPIO3 / SCL"]:::scl
     end
@@ -21,7 +22,7 @@ flowchart LR
     SDA_DOT["●"]:::dot
     SCL_DOT["●"]:::dot
 
-    %% STM32F411 Blackpill
+    %% STM32F411 Blackpill block - bottom
     subgraph B["STM32F411 Blackpill"]
     direction LR
 
@@ -66,6 +67,10 @@ flowchart LR
     SCL_DOT ---|"PB6 / I2C1_SCL"| MCP
     SCL_DOT ---|"PB10 / I2C2_SCL"| MAX
     SCL_DOT ---|"PA8 / I2C3_SCL"| POT
+
+    %% Force horizontal order of subblocks inside Blackpill
+    MCP ~~~ MAX
+    MAX ~~~ POT
 
     %% MCP23008 outputs
     GP0 --- GP0_OUT["PA4"]
