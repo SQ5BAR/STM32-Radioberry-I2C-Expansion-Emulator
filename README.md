@@ -222,8 +222,6 @@ The LED briefly blinks after successful I²C activity.
 Ready-to-use firmware files are included in the `build` directory:
 
 - `build/stm32_radioberry_i2c_emulator_3in1.bin`
-- `build/stm32_radioberry_i2c_emulator_3in1.hex`
-- `build/stm32_radioberry_i2c_emulator_3in1.elf`
 
 For most users no compilation is required.
 
@@ -312,6 +310,7 @@ Target MCU:
 
 # Tested Software
 
+- piHPSDR
 - SparkSDR
 - Radioberry compatible SDR software
 
