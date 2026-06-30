@@ -14,9 +14,10 @@ The project emulates the three I²C devices used by the original Radioberry hard
 
 allowing Radioberry-compatible software to operate without the original hardware.
 
-## Target MCU
+## Target Hardware
 
-- STM32F411CEU6 Blackpill
+- Host: RadioBerry on Raspberry Pi 4 / 5
+- Emulator MCU: STM32F411CEU6 Blackpill
 
 ---
 <img width="733" height="803" alt="obraz" src="https://github.com/user-attachments/assets/86f66810-2a83-4e94-8be7-6a729e7ab321" />
