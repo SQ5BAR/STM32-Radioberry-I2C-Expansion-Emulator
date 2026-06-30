@@ -1,144 +1,183 @@
 # STM32 Radioberry I²C Expansion Emulator
 
-STM32F411-based emulator of the I²C peripherals expected by Radioberry-compatible SDR software.
+STM32F411-based emulator of common I²C expansion peripherals used with the Radioberry SDR platform.
 
-> This project emulates the three external I²C peripherals used by Radioberry SDR hardware using a single STM32F411 Blackpill board.
->
-> No original Radioberry hardware is required.
+> This project emulates three external I²C peripherals commonly used with Radioberry-based SDR setups using a single STM32F411 Blackpill board.
 
-The project emulates the three I²C devices used by the original Radioberry hardware:
+The project emulates the following I²C devices commonly used with Radioberry-based hardware:
 
-- MAX11613 ADC (forward power, reflected power and SWR measurements)
-- MCP23008 GPIO expander (filter, relay and open collector control)
-- MCP4662 digital potentiometer (power amplifier bias control)
+* MAX11613 ADC for forward power, reflected power and SWR measurements
+* MCP23008 GPIO expander for filter, relay and open collector control
+* MCP4662 digital potentiometer for power amplifier bias control
 
-allowing Radioberry-compatible software to operate without the original hardware.
+This allows Radioberry-compatible software and hardware to use STM32-based emulation of these expansion peripherals instead of separate external ICs.
+
+---
 
 ## Target Hardware
 
-- Host: RadioBerry on Raspberry Pi 4 / 5
-- Emulator MCU: STM32F411CEU6 Blackpill
+* Host platform: Raspberry Pi 4 / 5 with Radioberry
+* Emulator MCU: STM32F411CEU6 Blackpill
 
 ---
-<img width="733" height="803" alt="obraz" src="https://github.com/user-attachments/assets/86f66810-2a83-4e94-8be7-6a729e7ab321" />
 
+## Hardware Connection Overview
 
+<img width="733" height="803" alt="STM32 Radioberry I2C Expansion Emulator wiring diagram" src="https://github.com/user-attachments/assets/86f66810-2a83-4e94-8be7-6a729e7ab321" />
+
+---
+
+## Wiring Summary
+
+### Raspberry Pi / Radioberry I²C Bus
+
+```text
+Raspberry Pi Pin 3 / GPIO2 / SDA
+ ├── PB9  (MAX11613 SDA)
+ ├── PB7  (MCP23008 SDA)
+ └── PB4  (MCP4662 SDA)
+
+Raspberry Pi Pin 5 / GPIO3 / SCL
+ ├── PB10 (MAX11613 SCL)
+ ├── PB6  (MCP23008 SCL)
+ └── PA8  (MCP4662 SCL)
+
+Raspberry Pi Pin 1 / 3.3V → Blackpill 3.3V / VCC
+Raspberry Pi Pin 6 / GND  → Blackpill GND
+```
+
+> The I²C bus uses 3.3 V logic only.
+>
+> Do not connect 5 V logic to the STM32 pins.
+>
+> A common GND between Raspberry Pi / Radioberry and Blackpill is required.
+
+If the Blackpill is powered from USB, the 3.3 V connection from Raspberry Pi is not required, but the common GND connection is still required.
+
+---
 
 # Emulated Devices
 
-## MAX11613 (Power / SWR Measurement)
+## MAX11613 — Power / SWR Measurement
 
-**I²C Address:** `0x34`
+**I²C address:** `0x34`
 
-**Bus:**
+**STM32 I²C bus:**
 
-- I2C2
-- PB10 = SCL
-- PB9 = SDA
+```text
+PB10 (SCL)
+PB9  (SDA)
+```
 
-The original MAX11613 ADC is used by Radioberry for:
+The original MAX11613 ADC is used with Radioberry-based setups for:
 
-- forward power measurement
-- reflected power measurement
-- SWR calculation
-- analog telemetry inputs
+* forward power measurement
+* reflected power measurement
+* SWR calculation
+* analog telemetry inputs
 
 The emulator uses the STM32 ADC inputs:
 
-| ADC Channel | STM32 Pin |
-|------------|------------|
-| CH0 | PA0 |
-| CH1 | PA1 |
-| CH2 | PA2 |
-| CH3 | PA3 |
+```text
+CH0 (PA0 / ADC1_IN0)
+CH1 (PA1 / ADC1_IN1)
+CH2 (PA2 / ADC1_IN2)
+CH3 (PA3 / ADC1_IN3)
+```
 
 ### Specifications
 
-- 0 ... 3.3 V input range
-- 12-bit resolution
+* 0 ... 3.3 V input range
+* 12-bit ADC resolution
 
-### Typical signal sources
+### Typical Signal Sources
 
-- directional couplers
-- SWR bridges
-- RF power detectors
-- analog sensors
+* directional couplers
+* SWR bridges
+* RF power detectors
+* analog sensors
+* ATU-100 / N7DDC-style measurement bridges
 
-A practical source of forward/reflected power signals is the measurement bridge used in projects such as:
+The analog signals connected to PA0 ... PA3 must be scaled to the STM32 input range:
 
-- ATU-100
-- N7DDC ATU
-- similar automatic antenna tuners
+```text
+0 ... 3.3 V
+```
 
-The bridge outputs should be scaled to **0 ... 3.3 V** before connection to the STM32 ADC inputs.
+Do not exceed 3.3 V on any STM32 ADC input.
 
 ---
 
-## MCP23008 (Band Filters / Open Collector Control)
+## MCP23008 — Band Filters / Relay / Open Collector Control
 
-**I²C Address:** `0x20`
+**I²C address:** `0x20`
 
-**Bus:**
+**STM32 I²C bus:**
 
-- I2C1
-- PB6 = SCL
-- PB7 = SDA
+```text
+PB6 (SCL)
+PB7 (SDA)
+```
 
-In the original Radioberry design the MCP23008 GPIO expander is used to control:
+In Radioberry-based designs the MCP23008 GPIO expander can be used to control:
 
-- band-pass filters
-- low-pass filters
-- antenna relays
-- open-collector outputs
-- power amplifier switching
+* band-pass filters
+* low-pass filters
+* antenna relays
+* open collector outputs
+* power amplifier switching
+* external control logic
 
 ### GPIO Mapping
 
-| MCP23008 Pin | STM32 Pin |
-|-------------|------------|
-| GP0 | PA4 |
-| GP1 | PB12 |
-| GP2 | PB13 |
-| GP3 | PB14 |
-| GP4 | PB15 |
-| GP5 | PB3 |
-| GP6 | PB5 |
-| GP7 | PB8 |
+```text
+GP0 (PA4)
+GP1 (PB12)
+GP2 (PB13)
+GP3 (PB14)
+GP4 (PB15)
+GP5 (PB3)
+GP6 (PB5)
+GP7 (PB8)
+```
 
-The outputs can be connected directly to relay drivers, transistor stages or other control circuitry.
+The outputs can be connected to relay drivers, transistor stages or other control circuitry.
+
+Use suitable driver stages for relays or other loads. Do not drive relay coils directly from STM32 pins.
 
 ---
 
-## MCP4662 (PA Bias Control)
+## MCP4662 — PA Bias Control
 
-**I²C Address:** `0x2C`
+**I²C address:** `0x2C`
 
-**Bus:**
+**STM32 I²C bus:**
 
-- I2C3
-- PA8 = SCL
-- PB4 = SDA
+```text
+PA8 (SCL)
+PB4 (SDA)
+```
 
-The original Radioberry uses the MCP4662 digital potentiometer to control power amplifier bias voltage.
+The MCP4662 digital potentiometer is commonly used for PA bias control.
 
 The emulator converts the requested digital potentiometer setting into PWM outputs:
 
-| Function | STM32 Pin |
-|----------|------------|
-| PWM A | PA9 |
-| PWM B | PA10 |
+```text
+PWM A (PA9  / TIM1_CH2 PWM)
+PWM B (PA10 / TIM1_CH3 PWM)
+```
 
 ### Recommended Bias Circuit
 
 The PWM signal should be converted into a stable analog voltage before being used as a PA bias source.
 
 ```text
-PWM
-  ↓
+PWM output
+   ↓
 RC low-pass filter
-  ↓
+   ↓
 Operational amplifier buffer
-  ↓
+   ↓
 PA bias circuit
 ```
 
@@ -146,19 +185,21 @@ Direct connection of the PWM signal to a PA bias network is not recommended.
 
 ---
 
-# I²C Buses
+# I²C Architecture
 
-Three independent STM32 I²C peripherals are used:
+Three independent STM32 I²C peripherals are used internally:
 
-| Device | Address | Bus |
-|----------|---------|---------|
-| MAX11613 | 0x34 | I2C2 |
-| MCP23008 | 0x20 | I2C1 |
-| MCP4662 | 0x2C | I2C3 |
+```text
+MAX11613  0x34  I2C2
+MCP23008  0x20  I2C1
+MCP4662   0x2C  I2C3
+```
 
-The devices are separated across three STM32 I²C controllers because the STM32F411 Blackpill provides three hardware I²C peripherals.
+The STM32F411 Blackpill was selected because the STM32F411 provides three independent hardware I²C controllers.
 
-In a practical application the three buses can be connected together and used as a single shared I²C bus because all emulated devices use different I²C addresses:
+Although the firmware internally emulates the devices on separate STM32 I²C peripherals, all three buses can be connected externally to one shared physical I²C bus.
+
+This is possible because each emulated device uses a unique I²C address:
 
 ```text
 0x20  MCP23008
@@ -166,58 +207,57 @@ In a practical application the three buses can be connected together and used as
 0x34  MAX11613
 ```
 
-The firmware internally emulates the devices on separate STM32 I²C peripherals, but from the host perspective they may share the same SDA and SCL lines.
-
-This means all three emulated devices can be used simultaneously on a single physical I²C bus exactly as on the original Radioberry hardware.
-
-The STM32F411 Blackpill was selected primarily because it provides three independent hardware I²C controllers, making it possible to emulate all three devices concurrently while maintaining reliable operation and leaving sufficient processing resources for future expansion.
+From the Raspberry Pi / Radioberry side, the emulator behaves like three different I²C devices connected to the same SDA and SCL lines.
 
 ---
 
 # Typical Use Case
 
 ```text
-Radioberry Software
-        │
-        ▼
- STM32F411 Emulator
- ├─ MAX11613 → SWR and power measurements
- ├─ MCP23008 → Filter and relay control
- └─ MCP4662 → PA bias generation
+Raspberry Pi + Radioberry
+          │
+          │ I²C
+          ▼
+ STM32F411 Blackpill Emulator
+ ├── MAX11613 → SWR and power measurement inputs
+ ├── MCP23008 → filter, relay and open collector outputs
+ └── MCP4662  → PA bias PWM outputs
 ```
 
 External hardware may include:
 
-- directional coupler
-- ATU-100 measurement bridge
-- band-pass filters
-- low-pass filters
-- relay boards
-- power amplifier
-- custom RF hardware
+* directional coupler
+* ATU-100 / N7DDC measurement bridge
+* band-pass filters
+* low-pass filters
+* relay boards
+* power amplifier
+* custom RF hardware
 
 ---
 
 # Status LED
 
-| Function | STM32 Pin |
-|----------|------------|
-| Activity LED | PC13 |
+```text
+PC13 (Activity LED)
+```
 
-The LED briefly blinks after successful I²C activity.
+The PC13 LED briefly blinks after successful I²C activity.
 
 ---
 
 # Features
 
-- MAX11613 emulation
-- MCP23008 emulation
-- MCP4662 emulation
-- ADC sampling via DMA
-- PWM generation using TIM1
-- I²C bus recovery
-- PC13 activity indication
-- STM32CubeIDE project
+* MAX11613 emulation
+* MCP23008 emulation
+* MCP4662 emulation
+* ADC sampling via DMA
+* PWM generation using TIM1
+* I²C bus recovery
+* PC13 activity indication
+* STM32CubeIDE project
+* USB DFU programming support
+* UART bootloader programming support
 
 ---
 
@@ -225,15 +265,19 @@ The LED briefly blinks after successful I²C activity.
 
 Ready-to-use firmware files are included in the `build` directory:
 
-- `build/stm32_radioberry_i2c_emulator_3in1.bin`
+```text
+build/stm32_radioberry_i2c_emulator_3in1.bin
+build/stm32_radioberry_i2c_emulator_3in1.hex
+build/stm32_radioberry_i2c_emulator_3in1.elf
+```
 
-For most users no compilation is required.
+For most users, no compilation is required.
 
 ---
 
-# Programming via USB (Recommended)
+# Programming via USB DFU — Recommended
 
-The STM32F411 Blackpill contains a factory USB bootloader and can be programmed directly from Linux without an ST-Link programmer.
+The STM32F411 Blackpill contains a factory USB DFU bootloader and can be programmed directly from Linux without an ST-Link programmer.
 
 ## Install DFU Utility
 
@@ -268,17 +312,23 @@ dfu-util -a 0 -s 0x08000000:leave \
 
 ---
 
-# Programming via UART (Alternative)
+# Programming via UART — Alternative
+
+Install `stm32flash`:
 
 ```bash
 sudo apt install stm32flash
 ```
 
-| Blackpill | USB-UART |
-|------------|----------|
-| PA9 (TX1) | RX |
-| PA10 (RX1) | TX |
-| GND | GND |
+UART bootloader wiring:
+
+```text
+Blackpill PA9  (TX1) → USB-UART RX
+Blackpill PA10 (RX1) → USB-UART TX
+Blackpill GND        → USB-UART GND
+```
+
+Flash command:
 
 ```bash
 stm32flash \
@@ -288,17 +338,21 @@ stm32flash \
   /dev/ttyUSB0
 ```
 
+> PA9 and PA10 are used for UART bootloader programming only when the STM32 is in bootloader mode.
+>
+> During normal firmware operation, PA9 and PA10 are used as PWM outputs for the MCP4662 emulator.
+
 ---
 
 # Building From Source
 
-Open in STM32CubeIDE:
+Open the project in STM32CubeIDE:
 
 ```text
 File → Open Projects from File System...
 ```
 
-or
+or:
 
 ```text
 File → Import...
@@ -308,19 +362,38 @@ File → Import...
 
 Target MCU:
 
-- STM32F411CEU6
+```text
+STM32F411CEU6
+```
+
+The main application logic is located in:
+
+```text
+Core/Src/main.c
+```
 
 ---
 
 # Tested Software
 
-- piHPSDR
-- SparkSDR
-- Radioberry compatible SDR software
+* piHPSDR
+* SparkSDR
+* Radioberry-compatible SDR software
 
-## Tested Hardware
+---
 
-- STM32F411CEU6 Blackpill
+# Tested Hardware
+
+* Raspberry Pi 4 / 5 with Radioberry
+* STM32F411CEU6 Blackpill
+
+---
+
+# Notes
+
+This project does not emulate the Radioberry SDR transceiver itself.
+
+It emulates selected I²C expansion peripherals used with the Radioberry platform.
 
 ---
 
