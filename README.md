@@ -16,7 +16,7 @@ This allows Radioberry-compatible software and hardware to use STM32-based emula
 
 ## Target Hardware
 
-* Host platform: Raspberry Pi 4 / 5 with Radioberry
+* Host platform: Raspberry Pi 4/5 with Radioberry
 * Emulator MCU: STM32F411CEU6 Blackpill
 
 ---
@@ -246,29 +246,12 @@ The PC13 LED briefly blinks after successful I²C activity.
 
 ---
 
-# Features
-
-* MAX11613 emulation
-* MCP23008 emulation
-* MCP4662 emulation
-* ADC sampling via DMA
-* PWM generation using TIM1
-* I²C bus recovery
-* PC13 activity indication
-* STM32CubeIDE project
-* USB DFU programming support
-* UART bootloader programming support
-
----
-
 # Prebuilt Firmware
 
 Ready-to-use firmware files are included in the `build` directory:
 
 ```text
 build/stm32_radioberry_i2c_emulator_3in1.bin
-build/stm32_radioberry_i2c_emulator_3in1.hex
-build/stm32_radioberry_i2c_emulator_3in1.elf
 ```
 
 For most users, no compilation is required.
@@ -376,9 +359,10 @@ Core/Src/main.c
 
 # Tested Software
 
-* piHPSDR
-* SparkSDR
-* Radioberry-compatible SDR software
+- piHPSDR on Raspberry Pi / Radioberry
+- piHPSDR on Linux
+- Thetis on Windows
+- SparkSDR
 
 ---
 
@@ -388,15 +372,3 @@ Core/Src/main.c
 * STM32F411CEU6 Blackpill
 
 ---
-
-# Notes
-
-This project does not emulate the Radioberry SDR transceiver itself.
-
-It emulates selected I²C expansion peripherals used with the Radioberry platform.
-
----
-
-# License
-
-This project is provided as-is without warranty.
