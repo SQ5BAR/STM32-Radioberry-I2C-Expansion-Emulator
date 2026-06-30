@@ -19,7 +19,8 @@ allowing Radioberry-compatible software to operate without the original hardware
 - STM32F411CEU6 Blackpill
 
 ---
-<img width="606" height="660" alt="obraz" src="https://github.com/user-attachments/assets/de84458f-a443-4316-afe6-8d3d239b652a" />
+<img width="606" height="660" alt="obraz" src="https://github.com/user-attachments/assets/ec5601b7-f07e-4a09-81e1-f0a7ddaeb658" />
+
 
 # Emulated Devices
 
