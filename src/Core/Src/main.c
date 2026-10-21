@@ -51,7 +51,12 @@ static volatile uint8_t mcp_gpio_shadow_iodir = 0xFF;
 static volatile uint8_t mcp_gpio_shadow_olat = 0x00;
 
 /* I2C1 recovery and PC13 blink. */
-static volatile uint8_t i2c1_force_relisten = 0;
+/* Updated from I2C address IRQ, watched by main loop. */
+static volatile uint32_t i2c_last_address_ms = 0;
+static volatile uint8_t i2c_seen_since_boot = 0;
+/* Only serious errors (not normal AF/NACK) request restart. */
+static volatile uint8_t i2c_hard_fault_pending = 0;
+static volatile uint32_t i2c_hard_fault_ms = 0;
 static volatile uint32_t i2c1_activity_tick = 0;
 static volatile uint8_t pc13_blink_request = 0;
 static uint32_t pc13_blink_until = 0;
@@ -67,7 +72,6 @@ static volatile uint8_t max_tx_buf[8] = {0x00, 0x10, 0x01, 0x70, 0x00, 0x20, 0x0
 static volatile uint16_t adc_dma_raw[4] __attribute__((aligned(4))) = {0, 0, 0, 0};
 static volatile uint16_t max_adc_cached[4] = {0x0010, 0x0170, 0x0020, 0x0018};
 static uint32_t max_adc_last_copy_ms = 0;
-static uint32_t max_adc_start_ms = 0;
 static uint8_t max_adc_mode = 0; /* 0=off, 1=DMA, 2=poll */
 
 /* MCP4662 emulator on I2C3 / 0x2C */
@@ -95,6 +99,8 @@ static void pc13_led_service(void);
 static void pc13_blink_ok(void);
 static void max_adc_start(void);
 static void max_adc_service(void);
+static void radio_watchdog_init(void);
+static void radio_watchdog_feed(void);
 static void bias_pwm_start(void);
 static void bias_pwm_service(void);
 
@@ -198,6 +204,9 @@ int main(void)
 
     start_listen();
 
+    /* Independent LSI watchdog: also works if the main loop stops running. */
+    radio_watchdog_init();
+
     while (1)
     {
         /* Slow work outside I2C callbacks. */
@@ -206,6 +215,7 @@ int main(void)
         bias_pwm_service();
         i2c1_recovery_service();
         pc13_led_service();
+        radio_watchdog_feed();
     }
 }
 
@@ -264,18 +274,26 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c,
 {
     (void)AddrMatchCode;
 
+    /* One atomic 32-bit tick write. Never call HAL re-init from this IRQ. */
+    i2c_last_address_ms = HAL_GetTick();
+    i2c_seen_since_boot = 1U;
+
+    /* LED_ADDR_MATCH_20261020: event == slave address match on any I2C */
+    /* IRQ-safe: only set a flag; main loop performs the GPIO operation. */
+    pc13_blink_ok();
+
     if (hi2c->Instance == I2C1)
     {
         i2c1_activity_tick = HAL_GetTick();
 
         if (TransferDirection == I2C_DIRECTION_TRANSMIT)
         {
-            /* First byte is register pointer. */
+            /* First byte is register pointer. Next byte closes the write. */
             mcp_rx_phase = 0;
             HAL_I2C_Slave_Seq_Receive_IT(hi2c,
                                          (uint8_t *)&mcp_rx_byte,
                                          1,
-                                         I2C_NEXT_FRAME);
+                                         I2C_FIRST_FRAME);
         }
         else
         {
@@ -338,29 +356,26 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
             mcp_ptr = (uint8_t)(mcp_rx_byte % MCP_REGS);
             mcp_rx_phase = 1;
 
-            /* Wait for optional data byte. */
+            /* MCP23008 register + value: data is the FINAL byte.
+             * Register-pointer-only writes followed by RESTART remain legal. */
             HAL_I2C_Slave_Seq_Receive_IT(hi2c,
                                          (uint8_t *)&mcp_rx_byte,
                                          1,
-                                         I2C_NEXT_FRAME);
+                                         I2C_LAST_FRAME);
         }
         else
         {
             mcp_write_reg(mcp_ptr, mcp_rx_byte);
             mcp_ptr = (uint8_t)((mcp_ptr + 1) % MCP_REGS);
             i2c1_activity_tick = HAL_GetTick();
-            pc13_blink_ok();
-
-            HAL_I2C_Slave_Seq_Receive_IT(hi2c,
-                                         (uint8_t *)&mcp_rx_byte,
-                                         1,
-                                         I2C_NEXT_FRAME);
+            /* MCP23008_TWO_BYTE_STOP_FIX_20261021 */
+            /* Do NOT queue a third byte. Let HAL process STOP normally,
+             * transition to READY, and re-enable listen in ListenCplt. */
         }
     }
     else if (hi2c->Instance == I2C2)
     {
         max_cfg = max_rx_byte;
-        pc13_blink_ok();
         HAL_I2C_Slave_Seq_Receive_IT(hi2c,
                                      (uint8_t *)&max_rx_byte,
                                      1,
@@ -369,7 +384,6 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
     else if (hi2c->Instance == I2C3)
     {
         mcp4662_store_2byte_write();
-        pc13_blink_ok();
         HAL_I2C_EnableListen_IT(hi2c);
     }
 }
@@ -382,7 +396,6 @@ void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
         i2c1_activity_tick = HAL_GetTick();
     }
 
-    pc13_blink_ok();
     HAL_I2C_EnableListen_IT(hi2c);
 }
 
@@ -401,25 +414,34 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
+    /*
+     * HAL_I2C_ERROR_AF on STOP after an open-ended slave receive is
+     * normal for this emulator: e.g. MCP23008 writes register + value.
+     * The HAL STOP/Listen completion path will restore slave listen.
+     *
+     * Crucially, do not DeInit/Init the hardware inside HAL's own ISR.
+     * Doing so previously corrupted HAL state and could hold SCL low,
+     * freezing the Raspberry Pi master during a band/filter change.
+     */
+    const uint32_t err = HAL_I2C_GetError(hi2c);
+
     if (hi2c->Instance == I2C1)
     {
         mcp_rx_phase = 0;
-        i2c1_force_relisten = 1;
         i2c1_activity_tick = HAL_GetTick();
     }
     else if (hi2c->Instance == I2C3)
+    {
         mcp4662_reset_state();
+    }
 
-    HAL_I2C_DeInit(hi2c);
-
-    if (hi2c->Instance == I2C1)
-        MX_I2C1_Init();
-    else if (hi2c->Instance == I2C2)
-        MX_I2C2_Init();
-    else if (hi2c->Instance == I2C3)
-        MX_I2C3_Init();
-
-    HAL_I2C_EnableListen_IT(hi2c);
+    /* AF (master NACK / short frame termination) needs NO recovery. */
+    if ((err & ~(uint32_t)HAL_I2C_ERROR_AF) != 0U)
+    {
+        /* Deferring reset lets HAL finish the current interrupt first. */
+        i2c_hard_fault_ms = HAL_GetTick();
+        i2c_hard_fault_pending = 1U;
+    }
 }
 
 void SystemClock_Config(void)
@@ -512,11 +534,6 @@ static void bias_pwm_service(void)
     bias_pwm_apply(v0, v1);
 }
 
-static uint8_t max_adc_all_zero(const uint16_t v[4])
-{
-    return ((v[0] | v[1] | v[2] | v[3]) == 0U);
-}
-
 static void max_adc_copy_to_cache(const uint16_t v[4])
 {
     __disable_irq();
@@ -529,14 +546,28 @@ static void max_adc_copy_to_cache(const uint16_t v[4])
 
 static void max_adc_switch_to_polling(void)
 {
+    /* Emergency fallback only if HAL_ADC_Start_DMA actually failed.
+     * Real zero readings must never force a switch to polling. */
     HAL_ADC_Stop_DMA(&hadc1);
     HAL_ADC_Stop(&hadc1);
-    max_adc_mode = 2;
+    hadc1.Init.ScanConvMode = DISABLE;
+    hadc1.Init.ContinuousConvMode = DISABLE;
+    hadc1.Init.NbrOfConversion = 1;
+    hadc1.Init.DMAContinuousRequests = DISABLE;
+    hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+    if (HAL_ADC_Init(&hadc1) == HAL_OK)
+    {
+        max_adc_mode = 2;
+    }
+    else
+    {
+        i2c_hard_fault_ms = HAL_GetTick();
+        i2c_hard_fault_pending = 1U;
+    }
 }
 
 static void max_adc_start(void)
 {
-    max_adc_start_ms = HAL_GetTick();
     max_adc_mode = 0;
 
     /* Start ADC DMA, fallback to polling if needed. */
@@ -552,27 +583,33 @@ static void max_adc_start(void)
 
 static void max_adc_poll_once(void)
 {
+    /* Single conversion per channel; the ADC scan DMA mode remains the
+     * default and is not touched during normal operation. */
+    static const uint32_t channel[4] = {
+        ADC_CHANNEL_0, ADC_CHANNEL_1, ADC_CHANNEL_2, ADC_CHANNEL_3
+    };
     uint16_t sample[4] = {0, 0, 0, 0};
-    uint8_t ok = 1;
-
-    if (HAL_ADC_Start(&hadc1) != HAL_OK)
-        return;
+    ADC_ChannelConfTypeDef cfg = {0};
+    cfg.Rank = 1;
+    cfg.SamplingTime = ADC_SAMPLETIME_480CYCLES;
 
     for (uint8_t i = 0; i < 4; i++)
     {
-        if (HAL_ADC_PollForConversion(&hadc1, 2) != HAL_OK)
+        cfg.Channel = channel[i];
+        if (HAL_ADC_ConfigChannel(&hadc1, &cfg) != HAL_OK)
+            return;
+        if (HAL_ADC_Start(&hadc1) != HAL_OK)
+            return;
+        HAL_StatusTypeDef ok = HAL_ADC_PollForConversion(&hadc1, 2);
+        if (ok != HAL_OK)
         {
-            ok = 0;
-            break;
+            HAL_ADC_Stop(&hadc1);
+            return;
         }
-
         sample[i] = (uint16_t)(HAL_ADC_GetValue(&hadc1) & 0x0FFF);
+        HAL_ADC_Stop(&hadc1);
     }
-
-    HAL_ADC_Stop(&hadc1);
-
-    if (ok)
-        max_adc_copy_to_cache(sample);
+    max_adc_copy_to_cache(sample);
 }
 
 static void max_adc_service(void)
@@ -596,11 +633,6 @@ static void max_adc_service(void)
 
         max_adc_copy_to_cache(sample);
 
-        /* All-zero DMA after startup means fallback. */
-        if ((uint32_t)(now - max_adc_start_ms) > 500U && max_adc_all_zero(sample))
-        {
-            max_adc_switch_to_polling();
-        }
     }
     else
     {
@@ -633,30 +665,57 @@ static void pc13_led_service(void)
     }
 }
 
+/* IWDG remains independent of both the HAL tick and I2C IRQ delivery.
+ * LSI nominal 32 kHz / 256 / (999+1) -> about 8 seconds.
+ * IWDG LSI clock tolerance means this is intentionally approximate. */
+static void radio_watchdog_init(void)
+{
+    IWDG->KR = 0x5555U;  /* unlock PR/RLR */
+    IWDG->PR = 6U;       /* divide by 256 */
+    IWDG->RLR = 999U;
+    IWDG->KR = 0xAAAAU;  /* reload */
+    IWDG->KR = 0xCCCCU;  /* start */
+}
+
+static void radio_watchdog_feed(void)
+{
+    IWDG->KR = 0xAAAAU;
+}
+
+/* No peripheral DeInit/Init inside interrupts, and no false 100 ms
+ * 'stuck' timeout between legitimate master transactions.
+ * Any serious peripheral fault -> reset outside ISR after 250 ms.
+ * Once I2C activity has been detected, 15 seconds of complete silence
+ * -> reset STM32 to release SCL/SDA if a slave was stuck stretching.
+ * On reset the activity flag clears, so an idle Pi does NOT reset-loop.
+ */
 static void i2c1_recovery_service(void)
 {
     uint32_t now = HAL_GetTick();
-    HAL_I2C_StateTypeDef st;
 
-    if (i2c1_activity_tick == 0)
-        i2c1_activity_tick = now;
-
-    st = HAL_I2C_GetState(&hi2c1);
-
-    if (i2c1_force_relisten ||
-        ((st != HAL_I2C_STATE_READY) &&
-         (st != HAL_I2C_STATE_LISTEN) &&
-         ((uint32_t)(now - i2c1_activity_tick) > 100U)))
+    if (i2c_hard_fault_pending &&
+        (uint32_t)(now - i2c_hard_fault_ms) >= 250U)
     {
-        i2c1_force_relisten = 0;
-        mcp_rx_phase = 0;
+        NVIC_SystemReset();
+    }
 
-        HAL_I2C_DisableListen_IT(&hi2c1);
-        HAL_I2C_DeInit(&hi2c1);
-        MX_I2C1_Init();
-        HAL_I2C_EnableListen_IT(&hi2c1);
+    /* A failed filter transaction can strand I2C1 BUSY while ADC/I2C2
+     * still talks normally, so global inactivity alone is insufficient.
+     * This is only a LAST RESORT full-chip reset, not re-init mid-frame. */
+    if (i2c_seen_since_boot)
+    {
+        HAL_I2C_StateTypeDef st = HAL_I2C_GetState(&hi2c1);
+        if (st != HAL_I2C_STATE_READY && st != HAL_I2C_STATE_LISTEN &&
+            (uint32_t)(now - i2c1_activity_tick) >= 2000U)
+        {
+            NVIC_SystemReset();
+        }
+    }
 
-        i2c1_activity_tick = now;
+    if (i2c_seen_since_boot &&
+        (uint32_t)(now - i2c_last_address_ms) >= 15000U)
+    {
+        NVIC_SystemReset();
     }
 }
 
